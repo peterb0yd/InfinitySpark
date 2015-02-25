@@ -15,9 +15,6 @@ PFont font;
 void setup() {
   size(600, 620, P3D);
   
-  font = createFont("Arial", 12);
-  textFont(font);
-  
   vector = new Vector(0,0,0);
   rMat = new rMatrix();
   graph = new Graph_3d();
