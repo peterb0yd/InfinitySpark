@@ -10,7 +10,6 @@ public boolean dragging = false;
 public boolean released = false;
 public float maxValue = 0;
 boolean error = false;
-PFont font;
 
 void setup() {
   size(600, 620, P3D);
