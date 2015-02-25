@@ -1,6 +1,6 @@
 <h1> *** VectorRotation for JavaScript *** </h1>
 
-- Run this version using the JavaScript add-on to processing
+- Run this version using the JavaScript add-on for processing
 
 <h2> Differences between this and Java version </h2>
 
