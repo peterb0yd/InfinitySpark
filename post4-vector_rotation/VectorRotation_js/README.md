@@ -1,4 +1,4 @@
-<h1> *** VectorRotation for JavaScript *** </h1>
+<h1> VectorRotation for JavaScript </h1>
 
 - Run this version using the JavaScript add-on for processing
 
