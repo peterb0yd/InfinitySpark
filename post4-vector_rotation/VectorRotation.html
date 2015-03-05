@@ -1,0 +1,933 @@
+<?php  ?>
+
+<html>
+
+<style>
+
+    #container {
+        width:800px;
+        height:800px;
+    }
+    
+    .vector-input {
+        position:absolute;
+        font-size:10pt;
+        border-radius:10px;
+        padding:0 5px 0 5px;
+    }
+
+    body { height:2000px; }
+
+</style>
+
+
+<body>
+    <div id="container">
+        <input class="vector-input" id="x-input" type="text" name="Test" value="0">
+        <input class="vector-input" id="y-input" type="text" name="Test" value="0">
+        <input class="vector-input" id="z-input" type="text" name="Test" value="0">
+    </div>
+</body>
+
+
+</html>
+
+<script src="js/three.min.js"> </script>
+<script src="js/threex.dynamictexture.js"> </script>
+<script src="js/rx.js"> </script>
+<script src="fonts/helvetiker_regular.typeface.js"> </script>
+<script>
+
+    var container = document.getElementById('container');
+    var x_input = document.getElementById('x-input');
+    var y_input = document.getElementById('y-input');
+    var z_input = document.getElementById('z-input');
+    var vector_inputs = document.getElementsByClassName('vector-input');
+
+    var mouseX = 1, mouseY = 1, mouseVector;
+    var scene, raycaster, intersects, camera, renderer;
+    var geometry, material;
+    var graphGroup, rotObjectMatrix;
+    var vector, rotAngVector, rotCompVector;
+
+    var setVectorButton, resetVectorButton, resetGraphButton;
+
+    var xVec = new THREE.Vector3(1,0,0);
+    var yVec = new THREE.Vector3(0,1,0);
+    var zVec = new THREE.Vector3(0,0,1);
+    var x_set = 0, y_set = 0, z_set = 0;
+    var x_angle, y_angle, z_angle;
+    var xSlider, ySlider, zSlider;
+    var sliderObjects;
+    var sliders = [];
+    var buttons = [];
+    var axisLabels = [];
+    var posY;
+    var scaleCount = 0, scale = 0;
+    var projector, mouse = { x: 0, y: 0 }, INTERSECTED;
+    var mousePos;
+
+    var containerWidth = container.clientWidth;
+    var containerHeight = container.clientHeight;
+
+    var graphOrigin = new THREE.Vector3(-150, 180, 0);
+    var graphAngles = new THREE.Vector3();
+
+
+    var graphBoardTexture, 
+    vectorBoardTexture, 
+    scaleBoardTexture, 
+    sliderTexture,
+    vecAngleBoardTexture,
+    vecCompBoardTexture;
+
+    init();
+    animate();
+
+
+    /********* THREE JS *********/
+    function init() {
+
+        scene = new THREE.Scene();
+
+        var light = new THREE.DirectionalLight( 0xffffff, 1 );
+        light.position.set( 0, 5, 10 ).normalize();
+        scene.add( light );
+
+        camera = new THREE.PerspectiveCamera( 50, containerWidth / containerHeight, 1, 10000 );
+        camera.position.z = 1000;
+
+        // Group for Axes and Vector
+        graphGroup = new THREE.Group();
+
+        // All intersectable objects (sliders, buttons)
+        intersectObjects = new THREE.Object3D();    
+
+        // Create axes
+        var xAxis = createAxis(1, 400, 2, 2);
+        var yAxis = createAxis(2, 2, 400, 2);
+        var zAxis = createAxis(3, 2, 2, 400);
+
+        // Create Sliders
+        xSlider = createSlider(1, -100);
+        ySlider = createSlider(2, -140);
+        zSlider = createSlider(3, -180);
+
+        sliders.push(xSlider); 
+        sliders.push(ySlider);
+        sliders.push(zSlider);
+
+        // Add Graph Group
+        graphGroup.position.x = -150;
+        graphGroup.position.y = 180;
+        scene.add( graphGroup );
+
+        // Intersections variables
+        raycaster = new THREE.Raycaster();
+        mouseVector = new THREE.Vector3();
+
+        scene.add(intersectObjects);
+
+        // Set input positions
+        setInputPositions(containerWidth, containerHeight);
+
+        // Create Vector input board
+        createVectorInputBoard();
+
+        // Create Graph display board
+        createGraphBoard();
+
+        // Create Scale display board
+        createScaleBoard();
+
+        // Create Vector Angle display board
+        createVecAngleBoard();
+
+        // Create Vector Components display board
+        createVecCompBoard();
+
+        // Create renderer
+        renderer = new THREE.WebGLRenderer();
+        renderer.setSize( containerWidth, containerHeight );
+        renderer.setClearColor( 0xf0f0f0 );
+
+        // Add renderer
+        container.appendChild( renderer.domElement );
+
+        // Add objects for intersection
+        intersectObjects.add(xSlider.mesh);
+        intersectObjects.add(ySlider.mesh);
+        intersectObjects.add(zSlider.mesh);
+        intersectObjects.add(setVectorButton.mesh);
+        intersectObjects.add(resetVectorButton.mesh);
+        intersectObjects.add(resetGraphButton.mesh);
+
+        // Event listeners
+        window.addEventListener( 'resize', onWindowResize, false );
+        document.addEventListener( 'mousemove', onMouseMove, false );
+        document.addEventListener( 'mousedown', onMouseDown, false );
+        document.addEventListener( 'mouseup', onMouseUp, false );
+
+        // check window size on start
+        onWindowResize();
+
+    }
+    
+
+    /***** ANIMATE FUNCTION ******/
+    function animate() {
+
+        requestAnimationFrame( animate );
+
+        checkIntersections();
+        updateSliders();
+        updateButtons();
+
+        renderer.render( scene, camera );
+
+    }
+
+    // Function to make each axis
+    function createAxis(axis, width, height, depth) {
+        geometry = new THREE.BoxGeometry( width, height, depth );
+        material = new THREE.MeshLambertMaterial( { color: 0x000000 } );
+        var posText;
+        var negText;
+        //label axis
+        switch(axis){
+            case 1: posText = createText("X", 0x666666, 16, 2);
+                    posText.position.set( width/2+10, -8, 0 );
+                    negText = createText("-X", 0x666666, 16, 2);
+                    negText.position.set( -width/2-30, -8, 0 );
+                    break;
+            case 2: posText = createText("Y", 0x666666, 16, 2);
+                    posText.position.set( -6, height/2+12, 0);
+                    negText = createText("-Y", 0x666666, 16, 2);
+                    negText.position.set( -10, -height/2-24, 0 );
+                    break;
+            case 3: posText = createText("Z", 0x666666, 16, 2);
+                    posText.position.set( -24, -6, depth/2);
+                    negText = createText("-Z", 0x666666, 16, 2);
+                    negText.position.set( 10, -10, -depth/2 );
+                    break;
+        }
+        graphGroup.add(posText);
+        graphGroup.add(negText);
+        axisLabels.push(posText);
+        axisLabels.push(negText);
+
+        createTicks(axis);
+
+        var thisAxis = new THREE.Mesh( geometry, material ); 
+        graphGroup.add( thisAxis );
+        return thisAxis;
+    }
+
+    function createTicks(axis) {
+        var tick;
+        var material = new THREE.MeshLambertMaterial( { color: 0x000000 } );
+        for (var i = 0; i <= 10; i++) {
+            switch(axis) {
+                case 1:            
+                    var geometry = new THREE.BoxGeometry( 4, 6, 4 );
+                    tick = new THREE.Mesh( geometry, material );
+                    tick.position.set(-200+(i*40), 0, 0);
+                    break;
+                case 2:            
+                    var geometry = new THREE.BoxGeometry( 6, 4, 4 );
+                    tick = new THREE.Mesh( geometry, material );
+                    tick.position.set(0, -200+(i*40), 0);
+                    break;
+                case 3:            
+                    var geometry = new THREE.BoxGeometry( 4, 6, 4 );
+                    tick = new THREE.Mesh( geometry, material );
+                    tick.position.set(0, 0, -200+(i*40));
+                    break;
+            }
+            graphGroup.add(tick);
+        }
+    }
+
+    // Function to make each slider
+    function createSlider(axis, yPos) {
+
+        barGeometry = new THREE.BoxGeometry( 800, 10, 10 );
+        barMaterial = new THREE.MeshLambertMaterial( { color: 0xC2C2C2 } );
+
+        sliderTexture = createTexture(30, 30, "bold 18pt", false);
+        sliderGeometry = new THREE.BoxGeometry( 30, 30, 30 );
+        var materials = getMaterialsFrontFace(sliderTexture);
+        sliderMaterial = new THREE.MeshFaceMaterial( materials );
+
+        // Make Bar
+        var bar = new THREE.Mesh( barGeometry, barMaterial ); 
+        bar.position.y = yPos;
+        scene.add( bar );
+
+        // Label Slider
+        var axisText;
+        switch (axis) {
+            case 1: axisText = "X"; break;
+            case 2: axisText = "Y"; break;
+            case 3: axisText = "Z"; break;
+        }  
+        sliderTexture.clear("#0099FF");
+        sliderTexture.drawText(axisText, undefined, 24, "#ffffff");
+
+        // Make Slider
+        var slider = new Slider(new THREE.Mesh( sliderGeometry, sliderMaterial ),axis,axisText,sliderTexture); 
+        slider.mesh.position.y = yPos; 
+
+        return slider;
+    }
+
+    function createVectorInputBoard() {
+         // Position
+        var pos = new THREE.Vector3(270, 290, 0);
+
+        // Texture and geometry
+        vectorBoardTexture = createTexture(250, 260, "18pt", true);
+        geometry = new THREE.BoxGeometry( 250, 260, 30 );
+        var materials = getMaterialsFrontFace(vectorBoardTexture);
+        material = new THREE.MeshFaceMaterial( materials );
+        var board = new THREE.Mesh( geometry, material );
+        board.position.set(pos.x, pos.y, pos.z);
+        scene.add( board ); 
+
+        vectorBoardTexture.clear("#F9F9F9");
+        vectorBoardTexture.drawText("x", 30, 44, '#262626');
+        vectorBoardTexture.drawText("y", 30, 92, '#262626');
+        vectorBoardTexture.drawText("z", 30, 140, '#262626');
+
+        setVectorButton = createButton("Set Vector", pos.x-5, pos.y-55, 200);
+        resetVectorButton = createButton("Reset Vector", pos.x-5, pos.y-100, 200);
+        buttons.push(setVectorButton);
+        buttons.push(resetVectorButton);
+    }
+
+    function createGraphBoard() {
+        // Position
+        var pos = new THREE.Vector3(-270, -320, 0);
+
+        // Texture and geometry
+        graphBoardTexture = createTexture(250, 200, "18pt", true);
+        geometry = new THREE.BoxGeometry( 250, 200, 30 );
+        var materials = getMaterialsFrontFace(graphBoardTexture);
+        material = new THREE.MeshFaceMaterial( materials );
+        var board = new THREE.Mesh( geometry, material );
+        board.position.set(pos.x, pos.y, pos.z);
+        scene.add( board ); 
+
+        resetGraphButton = createButton("Reset Graph", pos.x, pos.y-60, 200);
+        buttons.push(resetGraphButton);
+
+        updateGraphAngles(new THREE.Vector3());
+    }
+
+    function updateGraphAngles(axes) {
+        graphBoardTexture.clear("#F9F9F9");
+        graphBoardTexture.context.font = "bold 18pt Arial";
+        graphBoardTexture.drawText("Graph Rotation", undefined, 35, '#262626');
+        graphBoardTexture.context.font = "16pt Arial";
+        graphBoardTexture.drawText("x:", 65, 70, '#262626');
+        graphBoardTexture.drawText("y:", 65, 100, '#262626');
+        graphBoardTexture.drawText("z:", 65, 130, '#262626');
+        graphBoardTexture.drawText(axes.x+"\u00B0", 100, 70, '#262626');
+        graphBoardTexture.drawText(axes.y+"\u00B0", 100, 100, '#262626');
+        graphBoardTexture.drawText(axes.z+"\u00B0", 100, 130, '#262626');
+    }
+
+    function createVecAngleBoard() {
+        // Position
+        var pos = new THREE.Vector3(0, -320, 0);
+
+        // Texture and geometry
+        vecAngleBoardTexture = createTexture(250, 200, "18pt", true);
+        geometry = new THREE.BoxGeometry( 250, 200, 30 );
+        var materials = getMaterialsFrontFace(vecAngleBoardTexture);
+        material = new THREE.MeshFaceMaterial( materials );
+        var board = new THREE.Mesh( geometry, material );
+        board.position.set(pos.x, pos.y, pos.z);
+        scene.add( board ); 
+
+        updateVectorAngles(new THREE.Vector3());
+    }
+
+    function updateVectorAngles(vec) {
+        vecAngleBoardTexture.clear("#F9F9F9");
+        vecAngleBoardTexture.context.font = "bold 18pt Arial";
+        vecAngleBoardTexture.drawText("Vector Angles", undefined, 35, '#262626');
+        vecAngleBoardTexture.drawText("After Rotation", undefined, 63, '#262626');
+        vecAngleBoardTexture.context.font = "16pt Arial";
+        vecAngleBoardTexture.drawText("x:", 65, 105, '#262626');
+        vecAngleBoardTexture.drawText("y:", 65, 135, '#262626');
+        vecAngleBoardTexture.drawText("z:", 65, 165, '#262626');
+        vecAngleBoardTexture.drawText(vec.x+"\u00B0", 100, 105, '#262626');
+        vecAngleBoardTexture.drawText(vec.y+"\u00B0", 100, 135, '#262626');
+        vecAngleBoardTexture.drawText(vec.z+"\u00B0", 100, 165, '#262626');
+    }
+
+    function createVecCompBoard() {
+        // Position
+        var pos = new THREE.Vector3(270, -320, 0);
+
+        // Texture and geometry
+        vecCompBoardTexture = createTexture(250, 200, "18pt", true);
+        geometry = new THREE.BoxGeometry( 250, 200, 30 );
+        var materials = getMaterialsFrontFace(vecCompBoardTexture);
+        material = new THREE.MeshFaceMaterial( materials );
+        var board = new THREE.Mesh( geometry, material );
+        board.position.set(pos.x, pos.y, pos.z);
+        scene.add( board ); 
+
+        updateVectorComponents(new THREE.Vector3());
+    }
+
+    function updateVectorComponents(vec) {
+        vecCompBoardTexture.clear("#F9F9F9");
+        vecCompBoardTexture.context.font = "bold 18pt Arial";
+        vecCompBoardTexture.drawText("Vector Components", undefined, 35, '#262626');
+        vecCompBoardTexture.drawText("After Rotation", undefined, 63, '#262626');
+        vecCompBoardTexture.context.font = "16pt Arial";
+        vecCompBoardTexture.drawText("x:", 65, 105, '#262626');
+        vecCompBoardTexture.drawText("y:", 65, 135, '#262626');
+        vecCompBoardTexture.drawText("z:", 65, 165, '#262626');
+        vecCompBoardTexture.drawText(vec.x, 100, 105, '#262626');
+        vecCompBoardTexture.drawText(vec.y, 100, 135, '#262626');
+        vecCompBoardTexture.drawText(vec.z, 100, 165, '#262626');
+    }
+
+    function createScaleBoard() {
+        // Position
+        var pos = new THREE.Vector3(270, 40, 0);
+
+        // Texture and geometry
+        scaleBoardTexture = createTexture(250, 200, "18pt", true);
+        geometry = new THREE.BoxGeometry( 250, 200, 30 );
+        var materials = getMaterialsFrontFace(scaleBoardTexture);
+        material = new THREE.MeshFaceMaterial( materials );
+        var board = new THREE.Mesh( geometry, material );
+        board.position.set(pos.x, pos.y, pos.z);
+        scene.add( board ); 
+
+        // Write scale text on init
+        setScale(0);
+
+        // Axis model
+        geometry = new THREE.BoxGeometry( 180, 2, 2);
+        material = new THREE.MeshLambertMaterial( { color: 0x000000  });
+        var lineAxis = new THREE.Mesh(geometry, material);
+        lineAxis.position.set(pos.x-2, pos.y+25, pos.z+20);
+        scene.add(lineAxis);
+
+        // Ticks on Axis
+        var geo = new THREE.BoxGeometry( 2, 8, 3 );
+        var tick;
+        for (var i = 0; i <= 5; i++) {
+            tick = new THREE.Mesh( geo, material );
+            tick.position.set(pos.x-92+(i*36), pos.y+25, pos.z+20);
+            scene.add(tick);
+        }
+
+        // Label axis
+        var lineLabel = new THREE.Mesh(geometry, material);
+        lineLabel.position.set(pos.x-2, pos.y-35, pos.z+20);
+        scene.add(lineLabel);
+
+        var leftLine, rightLine, midLine;
+        geometry = new THREE.BoxGeometry(2, 10, 2);
+        leftLine = new THREE.Mesh(geometry, material);
+        leftLine.position.set(pos.x-92, pos.y-30, pos.z+20);
+        rightLine = new THREE.Mesh(geometry, material);
+        rightLine.position.set(pos.x+88, pos.y-30, pos.z+20);
+        midLine = new THREE.Mesh(geometry, material);
+        midLine.position.set(pos.x-2, pos.y-40, pos.z+20);
+        scene.add(leftLine);
+        scene.add(rightLine);
+        scene.add(midLine);
+
+    }
+
+    function setScale(scale) {
+        scaleBoardTexture.clear("#F9F9F9");
+        scaleBoardTexture.context.font = "bold 18pt Arial";
+        scaleBoardTexture.drawText("Axis Scale", undefined, 40, "#262626");
+        scaleBoardTexture.context.font = "14pt Arial";
+        scaleBoardTexture.drawText("0", 29, 108, "#262626");
+        scaleBoardTexture.drawText("X", 209, 108, "#262626");
+        scaleBoardTexture.context.font = "16pt Arial";
+        scaleBoardTexture.drawText(scale, undefined, 175, "#262626");
+    }
+
+    function setInputPositions(width, height) {
+        var distTop = height/13.5;
+        var distLeft = width/3.7;
+
+        x_input.style.top = container.style.top + distTop;
+        y_input.style.top = container.style.top + distTop*1.7;
+        z_input.style.top = container.style.top + distTop*2.4;
+
+        for (i = 0; i < vector_inputs.length; i++) {
+            vector_inputs[i].style.left = container.style.left + width - distLeft;
+            vector_inputs[i].style.height = height/24;
+            vector_inputs[i].style.width = width/6;
+        }
+    }
+
+
+    function setVector(dest) {             
+        var origin = new THREE.Vector3(0,0,0);
+        var vec = dest.clone();
+        var mag = vec.length();
+        var HALF_PI = Math.PI * .5;
+        var max, min;
+
+        // Get Max value for scaling
+        max = Math.max(dest.x, dest.y, dest.z);     // get max
+        min = Math.min(dest.x, dest.y, dest.z);     // get min
+        if (min*-1 > max) max = min*-1;             // see if positive min is greater than max
+        var e = getScaleNum(max);                   // get exponents needed from max
+        if (e==null) scale = 0;                     // set scale to 0 if vec is null
+        else if (e==0) scale = 10;                  // set scale to 10 if single digits
+        else scale = Math.pow(10, e+1);             // set scale using exponents
+        scale = getSmallerScale(scale, max);        // make scale smaller if possible
+        setScale(scale);                            // display scale vec
+        scaleCount = 0;                             // reset exponent count value
+
+        dest.x = map(dest.x, -scale, scale, -200, 200);
+        dest.y = map(dest.y, -scale, scale, -200, 200);
+        dest.z = map(dest.z, -scale, scale, -200, 200);
+        var distance = dest.length();
+        var headLength = distance/4;
+        var headWidth = headLength/4;
+
+        var lineCurve = new THREE.LineCurve3( graphOrigin, dest.clone().add(graphOrigin));
+        geometry = new THREE.TubeGeometry( lineCurve, 10, 4, 100, true );
+        material = new THREE.MeshLambertMaterial({ color: 0xff0000 });
+        var tail = new THREE.Mesh (geometry, material );
+
+        geometry = new THREE.CylinderGeometry( 0, headWidth, headLength, 32 );
+        material = new THREE.MeshLambertMaterial({ color: 0xff0000 });
+        var head = new THREE.Mesh( geometry, material );
+
+        // Crazy calculations to point head in the tail's direction
+        var orientation = new THREE.Matrix4();      //a new orientation matrix to offset pivot
+        var offsetRotation = new THREE.Matrix4();   //a matrix to fix pivot rotation
+        var offsetPosition = new THREE.Matrix4();   //a matrix to fix pivot position
+        orientation.lookAt(dest,origin,new THREE.Vector3(0,1,0));   //look at destination
+        offsetRotation.makeRotationX(HALF_PI);      //rotate 90 degs on X
+        orientation.multiply(offsetRotation);       //combine orientation with rotation transformations
+        head.applyMatrix(orientation);
+        head.position.set(dest.x*0.95, dest.y*0.95, dest.z*0.95);
+        head.position.add(graphOrigin);
+
+        return new Vector(tail, head, vec, mag);
+    }
+
+    function checkIntersections() {
+        // find intersections
+        raycaster.setFromCamera( mouseVector.clone(), camera );
+
+        var intersects = raycaster.intersectObjects( intersectObjects.children );
+        if ( intersects.length > 0 ) {  // one or more intersection
+            if ( INTERSECTED != intersects[ 0 ].object ) {
+                INTERSECTED = intersects[ 0 ].object;
+
+                // Change cursor
+                document.body.style.cursor = 'pointer';
+
+                // Find intersected slider
+                var len = sliders.length;
+                for (var i = 0; i < len; i++) {
+                    var slider = sliders[i];
+                    if (slider.mesh == INTERSECTED) {
+                        slider.setOver(true);
+                    } else {
+                        slider.setOver(false);
+                    }
+                }
+
+                // Find intersected button
+                var len = buttons.length;
+                for (var i = 0; i < len; i++) {
+                    var button = buttons[i];
+                    if (button.mesh == INTERSECTED) {
+                        button.setOver(true);
+                    } else {
+                        button.setOver(false);
+                    }
+                }
+            }
+        } else {    // no intersections
+            INTERSECTED = null;
+
+            // set cursor to default
+            document.body.style.cursor = 'default';
+
+            // Set all sliders to false over
+            var len = sliders.length;
+            for (var i = 0; i < len; i++) {
+                var slider = sliders[i];
+                slider.setOver(false);
+                // slider.mesh.material.color.setHex( 0x555555 );
+            }
+
+            // Set all buttons to false over
+            var len = buttons.length;
+            for (var i = 0; i < len; i++) {
+                var button = buttons[i];
+                button.setOver(false);
+                button.setDown(false);
+                button.setClicked(false);
+                // button.mesh.material.color.setHex( 0x335CD6 );
+            }
+
+        }
+    }
+
+    function updateSliders() {
+        var len = sliders.length;
+        for (var i = 0; i < len; i++) {
+            var slider = sliders[i];
+            if (slider.dragging) {
+                // slider.mesh.material.color.setHex( 0x708DE2 );
+                var posX = slider.mesh.position.x
+                var newspos = constrain(mousePos.x-5, -390, 390);
+                if (Math.abs(newspos - posX) > 1) {
+                  posX = posX + (newspos-posX)/4;
+                } 
+                slider.mesh.position.x = posX;
+                var current = map(posX, -390, 390, -Math.PI, Math.PI);
+                var dest = map(newspos, -390, 390, -Math.PI, Math.PI);
+                switch (slider.graphAxis) {
+                    case 1: rotateAroundObjectAxis(graphGroup, 1, xVec, current); break;
+                    case 2: rotateAroundObjectAxis(graphGroup, 2, yVec, current); break;
+                    case 3: rotateAroundObjectAxis(graphGroup, 3, zVec, current); break;
+                }
+            }
+        }
+    }
+
+    function updateButtons() {
+        var len = buttons.length;
+        for (var i = 0; i < len; i++) {
+            var button = buttons[i];
+            if (button.down) {
+                if (button.mesh.position.z > 10) { 
+                    button.mesh.position.z -= 4;
+                }
+            } else {
+                if (button.mesh.position.z <= 24) {
+                    button.mesh.position.z += 6;
+                }
+            }
+            if (button.clicked) {
+                if (button.buttonType == "Set Vector") {
+                    var vec = new THREE.Vector3(
+                        parseFloat(x_input.value),
+                        parseFloat(y_input.value),
+                        parseFloat(z_input.value)
+                    );
+                    if (vector != null) {
+                        scene.remove( vector.tail );
+                        scene.remove( vector.head );
+                    }
+                    vector = setVector(vec);
+                    updateRotatedVector();
+                    scene.add( vector.tail );
+                    scene.add( vector.head );
+                    button.setClicked(false);
+                } else if (button.buttonType == "Reset Vector") {
+                    if (vector != null) {
+                        scene.remove( vector.tail );
+                        scene.remove( vector.head );
+                        vector.vec = new THREE.Vector3();
+                        updateRotatedVector();
+                    }
+                    var vlen = vector_inputs.length;
+                    for (var i = 0; i < vlen; i++) {
+                        var input = vector_inputs[i];
+                        input.value = '0';
+                    }
+                    setScale(0);
+                    button.setClicked(false);
+                } else if (button.buttonType == "Reset Graph") {
+                    var slen = sliders.length;
+                    for (var i = 0; i < slen; i++) {
+                        var slider = sliders[i];
+                        slider.mesh.position.x = 0;
+                        graphGroup.rotation.x = 0;
+                        graphGroup.rotation.y = 0;
+                        graphGroup.rotation.z = 0;
+                        x_set = y_set = z_set = 0;
+                        graphAngles = new THREE.Vector3();
+                        updateGraphAngles(graphAngles);
+                        if (vector != null) updateRotatedVector();
+                    }
+                    button.setClicked(false);
+                }
+            }
+            if (!button.over) {
+                button.setDown(false);
+                button.setClicked(false);
+            }
+        }
+    }
+
+    function onMouseMove( event ) {
+        var containerTop = container.offsetTop;
+
+        // mouse for raycaster
+        mouseVector.x = 2 * ((event.clientX-6) / containerWidth) - 1;
+        mouseVector.y = 1 - 2 * ( (event.clientY-containerTop+document.body.scrollTop) / containerHeight );
+
+        // update unprojected mouse
+        var vec = new THREE.Vector3();
+        vec.set(( event.clientX / containerWidth ) * 2 - 1, 
+            - ( event.clientY / (event.clientY-containerTop+document.body.scrollTop) / containerHeight ) * 2+ 1, 0.5 );
+        vec.unproject( camera );
+        var dir = vec.sub( camera.position ).normalize();
+        var distance = - camera.position.z / dir.z;
+        mousePos = camera.position.clone().add( dir.multiplyScalar( distance ) );
+    }
+
+    function onMouseDown( event ) {
+        var len = sliders.length;
+        for (var i = 0; i < len; i++) {
+            var slider = sliders[i];
+            if (slider.over)
+                slider.setDragging(true);
+        }
+
+        len = buttons.length;
+        for (var i = 0; i < len; i++) {
+            var button = buttons[i];
+            if (button.over) 
+                button.setDown(true);
+        }
+    }
+
+    function onMouseUp( event ) {
+        var len = sliders.length;
+        for (var i = 0; i < len; i++) {
+            var slider = sliders[i];
+            slider.setDragging(false);
+        }
+
+        len = buttons.length;
+        for (var i = 0; i < len; i++) {
+            var button = buttons[i];
+            if (button.over && button.down) {
+                button.setDown(false);
+                button.setClicked(true);
+            }
+        }
+    }
+
+    function onWindowResize() {
+        if (window.innerWidth < containerWidth) {
+            container.style.width = window.innerWidth;
+            container.style.height = window.innerWidth;
+        } else if (window.innerHeight < containerHeight) {
+            container.style.height = window.innerHeight;
+            container.style.width = window.innerHeight;
+        } else {
+            container.style.height = 800;
+            container.style.width = 800;
+        }
+
+        containerWidth = container.offsetWidth;
+        containerHeight = container.offsetHeight;
+
+        renderer.setSize( containerWidth, containerHeight );
+
+        setInputPositions(containerWidth, containerHeight);
+
+    }
+
+    function rotateAroundObjectAxis(graph, axis, axisVec, dest) { 
+        var rad;
+        switch (axis) {
+            case 1: x_set += (dest - x_set)/20; rad = (dest-x_set)/18; break;
+            case 2: y_set += (dest - y_set)/20; rad = (dest-y_set)/18; break;
+            case 3: z_set += (dest - z_set)/20; rad = (dest-z_set)/18; break;
+        }
+        if (rad <0.0008 && rad > -0.0008) return;
+
+        // Rotate object
+        graph.rotateOnAxis(axisVec, rad);
+        graphAngles = graph.rotation.toVector3().multiplyScalar(180/Math.PI);
+
+        // Update Graph angles for display (in degrees)
+        graphAngles.x = Math.round(graphAngles.x * 10000)/10000; 
+        graphAngles.y = Math.round(graphAngles.y * 10000)/10000; 
+        graphAngles.z = Math.round(graphAngles.z * 10000)/10000; 
+        updateGraphAngles(graphAngles); 
+
+        if (vector != null) updateRotatedVector();
+    }
+
+    function updateRotatedVector(){
+        // If Vector is empty
+        if (vector.vec.length() == 0) {
+            updateVectorComponents(vector.vec);
+            updateVectorAngles(vector.vec);
+            return;
+        }
+
+        // Update Rotated Vector components
+        rotCompVector = vector.vec;
+        rotCompVector = rotationX(rotCompVector, Math.radians(graphAngles.x));
+        rotCompVector = rotationY(rotCompVector, Math.radians(graphAngles.y));
+        rotCompVector = rotationZ(rotCompVector, Math.radians(graphAngles.z));
+        rotCompVector.x = Math.round(rotCompVector.x * 10000)/10000;
+        rotCompVector.y = Math.round(rotCompVector.y * 10000)/10000;
+        rotCompVector.z = Math.round(rotCompVector.z * 10000)/10000;
+        updateVectorComponents(rotCompVector);
+
+        // Update Rotated Vector angles 
+        rotAngVector = rotCompVector;
+        rotAngVector.x = Math.degrees(Math.acos(rotCompVector.x/vector.magnitude));
+        rotAngVector.y = Math.degrees(Math.acos(rotCompVector.y/vector.magnitude));
+        rotAngVector.z = Math.degrees(Math.acos(rotCompVector.z/vector.magnitude));
+        rotAngVector.x = Math.round(rotAngVector.x*10000)/10000;
+        rotAngVector.y = Math.round(rotAngVector.y*10000)/10000;
+        rotAngVector.z = Math.round(rotAngVector.z*10000)/10000;
+        updateVectorAngles(rotAngVector);
+    }
+
+    function getMaterialsFrontFace(texture) {
+        var materials = [];
+        for (var i = 0; i < 6; i++) {
+            if (i == 4) materials.push(new THREE.MeshLambertMaterial({ map: texture.texture }));
+            else materials.push(new THREE.MeshLambertMaterial({ color: 0xF9F9F9 }));
+        }
+        return materials;
+    }
+
+    function createButton(text, x, y, width) {
+        var texture = createTexture(width, 30, "bold 16pt", false);
+
+        // Create push button
+        geometry = new THREE.BoxGeometry( width, 30, 20  );
+        var materials = [];
+        for (var i = 0; i < 6; i++) {
+            if (i == 4) materials.push(new THREE.MeshLambertMaterial({ map: texture.texture }));
+            else materials.push(new THREE.MeshLambertMaterial({ color: 0x0099FF }));
+        }
+        material = new THREE.MeshFaceMaterial( materials );
+        var button = new THREE.Mesh( geometry, material );
+        button.position.set(x, y, 20);
+        scene.add( button );
+
+        // Label button
+        texture.clear("#0099FF");
+        texture.drawText(text, undefined, 22, '#ffffff');
+
+        return new Button(button, texture, text);
+    }
+
+    function createText(text, color, size, depth) {
+        var text3d = new THREE.TextGeometry( text, { size: size, height: depth, curveSegments: 2,
+            font: "helvetiker" });
+        var textMaterial = new THREE.MeshBasicMaterial( { color: color  } );
+        return new THREE.Mesh( text3d, textMaterial );
+    }
+
+    function createTexture(width, height, fontsize, needsUpdate) {
+        var texture = new THREEx.DynamicTexture(width,height);
+        texture.context.font = fontsize+" Arial";
+        texture.texture.needsUpdate  = needsUpdate;
+        return texture;
+    }
+
+    function getScaleNum(val) {
+        if (val == 0) return null;
+        if (val/10 >= 1) {
+            scaleCount+=1;
+            getScaleNum(val/10);
+        } else if (val*10 <= 1) {
+            scaleCount-=1;
+            getScaleNum(val*10);
+        } else {
+            return scaleCount;
+        }
+        return scaleCount;
+    }
+
+    function getSmallerScale(s, val) {
+        if (s/2 > val) getSmallerScale(s/2, val);
+        else scale = s;
+        return scale;
+    }
+
+    function changeTextureColor(texture, text, over) {
+            if (over) {
+                texture.clear("#87CFFF");
+                texture.drawText(text, undefined, 22, '#ffffff');
+            } else {
+                texture.clear("#0099FF");
+                texture.drawText(text, undefined, 22, '#ffffff');
+            }
+    }
+
+    function constrain(val, minv, maxv) {
+        return Math.min(Math.max(val, minv), maxv);
+    }  
+
+    function map(x, in_min, in_max, out_min, out_max) {
+      return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+    }
+
+    // Converts from degrees to radians.
+    Math.radians = function(degrees) {
+      return degrees * Math.PI / 180;
+    };
+     
+    // Converts from radians to degrees.
+    Math.degrees = function(radians) {
+      return radians * 180 / Math.PI;
+    };
+
+    function Slider (mesh, axis, text, texture) {
+        this.mesh = mesh;
+        this.graphAxis = axis;
+        this.axisText = text;
+        this.texture = texture;
+        this.over = false;
+        this.dragging = false;
+        this.setOver = function(over) {
+            changeTextureColor(this.texture, this.axisText, over);
+            this.over = over;
+        };
+        this.setDragging = function(dragging) {
+            this.dragging = dragging;
+        }
+    }
+
+    function Button (mesh, texture, type) {
+        this.mesh = mesh;
+        this.texture = texture;
+        this.buttonType = type;
+        this.setOver = function(over) {
+            changeTextureColor(this.texture, this.buttonType, over);
+            this.over = over;
+        };
+        this.setClicked = function(clicked) {
+            this.clicked = clicked;
+        };
+        this.setDown = function(down) {
+            this.down = down;
+        };
+    }
+
+    function Vector (tail, head, vec, mag) {
+        this.tail = tail;
+        this.head = head;
+        this.vec = vec;
+        this.magnitude = mag;
+    }
+
+
+
+</script>
