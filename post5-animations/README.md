@@ -4,4 +4,6 @@ These animations represent the concepts of gradient, divergence and curl explain
 
 Animations made using <a href="http://p5js.org/">p5 library</a> for javascript.
 
+In order to run them all on the same page, I made each sketch an instance variable as <a href="https://github.com/lmccart/itp-creative-js/wiki/Spring-2014:-Week-5">explained here</a>.
+
 
